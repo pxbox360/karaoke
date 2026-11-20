@@ -143,6 +143,46 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center;gap:6px}
 .hint{font-size:12px;color:var(--muted);line-height:1.6;margin-top:6px}
 .hint code{background:var(--bg);padding:1px 5px;border-radius:4px;color:var(--text)}
 @media (max-width:700px){ main,header{padding-left:10px;padding-right:10px} .modal{padding:0} #chartMain{height:340px} .mtf{grid-template-columns:repeat(2,1fr)} }
+
+/* ---------- จอแท็บเล็ต / มือถือ ---------- */
+.sortbar{display:none;gap:8px;align-items:center;margin-bottom:10px}
+.sortbar label{color:var(--muted);font-size:12px;white-space:nowrap}
+.sortbar select{width:auto;flex:1;max-width:260px}
+@media (max-width:1400px){
+  main{padding:12px}
+  table{min-width:0}
+  th,td{padding:7px 6px;font-size:12px}
+  th{white-space:normal;line-height:1.3}
+  .sym{font-size:13px}
+  .badge{font-size:11px;padding:2px 6px;white-space:normal}
+  .sub{font-size:10px}
+  .rsibar{width:40px;margin-left:4px}
+  .vbar{max-width:40px;margin-left:4px}
+  .summary{gap:6px}
+  .pill{padding:6px 9px;font-size:12px}
+  .pill b{font-size:14px;margin-left:4px}
+}
+@media (max-width:1100px){
+  .sortbar{display:flex}
+  .tablewrap{background:none;border:0;overflow:visible}
+  table,tbody{display:block}
+  thead{display:none}
+  tbody tr{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px 14px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+  td{display:block;border:0;padding:0;font-size:12px;text-align:left!important;min-width:0}
+  td.na{display:none}
+  td:first-child{grid-column:1/-2;grid-row:1;display:flex;justify-content:space-between;align-items:center;gap:8px;border-bottom:1px solid var(--line);padding-bottom:6px}
+  td:nth-child(n+2)::before{display:block;color:var(--muted);font-size:10px;margin-bottom:2px;font-family:'IBM Plex Sans Thai',system-ui,sans-serif}
+  td:nth-child(2)::before{content:"ราคา"} td:nth-child(3)::before{content:"% 24h"} td:nth-child(4)::before{content:"Vol 24h"}
+  td:nth-child(5)::before{content:"Triangle"} td:nth-child(6)::before{content:"Breakout & Retest"} td:nth-child(7)::before{content:"Head & Shoulders"}
+  td:nth-child(8)::before{content:"Cup & Handle"} td:nth-child(9)::before{content:"Volume (vs avg20)"} td:nth-child(10)::before{content:"RSI (7)"}
+  td:nth-child(11)::before{content:"Stoch RSI"} td:nth-child(12)::before{content:"MACD"} td:nth-child(13)::before{content:"คะแนน"}
+  td:nth-child(13){grid-column:-2/-1;grid-row:1;text-align:right!important;border-bottom:1px solid var(--line);padding-bottom:6px;font-size:15px;align-self:stretch;display:flex;align-items:center;justify-content:flex-end}
+  td:nth-child(13)::before{content:none!important}
+  td.empty::before,td[colspan]::before{content:none!important}
+  td.empty,td[colspan]{grid-column:1/-1!important;border:0;justify-content:center}
+  .modal{padding:8px}
+  #chartMain{height:340px}
+}
 </style>
 </head>
 <body>
@@ -200,6 +240,7 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center;gap:6px}
   <div class="err" id="err"></div>
 
   <div class="summary" id="summary"></div>
+  <div class="sortbar"><label>เรียงตาม</label><select id="sortSel"></select><button class="btn ghost" id="sortDir" type="button">▼</button></div>
 
   <div class="tablewrap">
     <table>
@@ -760,10 +801,12 @@ const FILTERS=[
   {k:'stx',t:'⚡ Stoch RSI Cross',f:r=>r.stoch&&r.stoch.zoneCross!==0},
   {k:'mdx',t:'⚡ MACD Cross',f:r=>r.macd&&r.macd.cross!==0},
 ];
+const tdc=h=>`<td${/^(<span class="muted">)?—(<\/span>)?$/.test(h)?' class="na"':''}>${h}</td>`;
 function render(){
   const ok=results.filter(r=>!r.error);
   $('summary').innerHTML=FILTERS.map(F=>`<div class="pill ${filter===F.k?'on':''}" data-f="${F.k}">${F.t}<b>${ok.filter(F.f).length}</b></div>`).join('');
   $('thead').innerHTML=COLS.map(c=>`<th data-k="${c.k}" style="${c.num?'text-align:right':''}">${c.t} ${S.sortKey===c.k?'<span class="arr">'+(S.sortDir<0?'▼':'▲')+'</span>':''}</th>`).join('');
+  $('sortSel').innerHTML=COLS.map(c=>`<option value="${c.k}" ${S.sortKey===c.k?'selected':''}>${c.t}</option>`).join(''); $('sortDir').textContent=S.sortDir<0?'▼ มากไปน้อย':'▲ น้อยไปมาก';
   const F=FILTERS.find(x=>x.k===filter)||FILTERS[0];
   let rows=ok.filter(F.f);
   rows.sort((a,b)=>{ const x=sortVal(a,S.sortKey), y=sortVal(b,S.sortKey); return (x>y?1:x<y?-1:0)*S.sortDir; });
@@ -775,10 +818,10 @@ function render(){
       <td class="num mono">${fmtP(t.lastPrice)}</td>
       <td class="num mono ${chg>=0?'up':'down'}">${chg>=0?'+':''}${chg.toFixed(2)}%</td>
       <td class="num mono muted">${fmtVol(t.quoteVolume)}</td>
-      <td>${triBadge(r.tri)}</td>
-      <td>${brBadge(r.br)}</td>
-      <td>${hsBadge(r.hs)}</td>
-      <td>${chBadge(r.ch)}</td>
+      ${tdc(triBadge(r.tri))}
+      ${tdc(brBadge(r.br))}
+      ${tdc(hsBadge(r.hs))}
+      ${tdc(chBadge(r.ch))}
       <td>${volCell(r.vr,r.green)}</td>
       <td>${rsiCell(r.rsi)}</td>
       <td>${stochCell(r.stoch)}</td>
@@ -1364,6 +1407,8 @@ $('addBtn').addEventListener('click',addCoins);
 $('coinInput').addEventListener('keydown',e=>{ if(e.key==='Enter') addCoins(); });
 $('chips').addEventListener('click',e=>{ const rm=e.target.dataset.rm; if(rm!=null){ S.custom=S.custom.filter(c=>c!==rm); save(); renderChips(); results=results.filter(r=>S.mode==='custom'?r.sym!==symOf(rm):true); render(); } });
 $('summary').addEventListener('click',e=>{ const p=e.target.closest('.pill'); if(p){ filter=p.dataset.f; render(); } });
+$('sortSel').addEventListener('change',e=>{ S.sortKey=e.target.value; S.sortDir=S.sortKey==='sym'?1:-1; save(); render(); });
+$('sortDir').addEventListener('click',()=>{ S.sortDir*=-1; save(); render(); });
 $('thead').addEventListener('click',e=>{ const th=e.target.closest('th'); if(!th) return; const k=th.dataset.k; if(S.sortKey===k) S.sortDir*=-1; else { S.sortKey=k; S.sortDir=k==='sym'?1:-1; } save(); render(); });
 $('tbody').addEventListener('click',e=>{ const tr=e.target.closest('tr[data-sym]'); if(tr) openChart(tr.dataset.sym); });
 $('mtf').addEventListener('click',e=>{ const d=e.target.closest('div[data-tf]'); if(d){ modalTf=d.dataset.tf; document.querySelectorAll('#mtf div').forEach(x=>x.classList.toggle('on',x===d)); loadChart(false); } });
