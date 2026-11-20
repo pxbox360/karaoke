@@ -51,6 +51,10 @@ jobs:
           open(p, 'w', encoding='utf-8').write(s)
           PY
           cat android/app/src/main/AndroidManifest.xml
+          # permission_handler ต้องใช้ compileSdk 37 ขึ้นไป
+          for f in android/app/build.gradle.kts android/app/build.gradle; do
+            [ -f "$f" ] && sed -i -E 's/compileSdk(Version)? *=? *flutter\.compileSdkVersion/compileSdk = 37/' "$f" && grep -n compileSdk "$f"
+          done || true
 
       - name: Build APK
         working-directory: app
