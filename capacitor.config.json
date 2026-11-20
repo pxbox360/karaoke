@@ -1,0 +1,7 @@
+{
+  "appId": "com.pxbox.cryptoscanner",
+  "appName": "Crypto Scanner",
+  "webDir": "www",
+  "server": { "androidScheme": "https", "cleartext": true },
+  "plugins": { "CapacitorHttp": { "enabled": true } }
+}
