@@ -1,0 +1,73 @@
+# สร้างไฟล์ .apk อัตโนมัติบน GitHub (ไม่ต้องติดตั้งอะไรบนคอม)
+# ทุกครั้งที่แก้ไฟล์ใน repo หรือกดปุ่ม "Run workflow" จะ build ใหม่
+# แล้วเอาไฟล์ .apk ไปไว้ในหน้า Releases
+
+name: Build APK
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: ดึงโค้ด
+        uses: actions/checkout@v4
+
+      - name: ติดตั้ง Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: ติดตั้ง Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: สร้างโปรเจกต์และใส่โค้ด
+        run: |
+          flutter create --project-name karaoke_app --org com.karaoke --platforms android app
+          cp lib/main.dart app/lib/main.dart
+          cd app
+          flutter pub add youtube_explode_dart video_player permission_handler file_picker shared_preferences
+          python3 - <<'PY'
+          p = 'android/app/src/main/AndroidManifest.xml'
+          s = open(p, encoding='utf-8').read()
+          perms = (
+              '<uses-permission android:name="android.permission.INTERNET"/>\n    '
+              '<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>\n    '
+              '<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>\n    '
+              '<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29"/>\n    '
+          )
+          s = s.replace('<application', perms + '<application', 1)
+          s = s.replace('android:label="karaoke_app"',
+                        'android:label="คาราโอเกะ" android:requestLegacyExternalStorage="true"', 1)
+          open(p, 'w', encoding='utf-8').write(s)
+          PY
+          cat android/app/src/main/AndroidManifest.xml
+
+      - name: Build APK
+        working-directory: app
+        run: flutter build apk --release
+
+      - name: เปลี่ยนชื่อไฟล์
+        run: cp app/build/app/outputs/flutter-apk/app-release.apk karaoke.apk
+
+      - name: เก็บไฟล์ไว้ในหน้า Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: karaoke-apk
+          path: karaoke.apk
+
+      - name: ปล่อยไฟล์ในหน้า Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: คาราโอเกะ build ${{ github.run_number }}
+          files: karaoke.apk
