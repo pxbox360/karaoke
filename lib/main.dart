@@ -114,7 +114,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> pickFolder() async {
-    final path = await FilePicker.platform.getDirectoryPath();
+    final path = await FilePicker.getDirectoryPath();
     if (path == null) return;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('folder', path);
