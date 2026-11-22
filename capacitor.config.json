@@ -1,0 +1,7 @@
+{
+  "appId": "com.pxbox.cryptoheatmap",
+  "appName": "Crypto Heatmap",
+  "webDir": "www",
+  "server": { "androidScheme": "https" },
+  "plugins": { "CapacitorHttp": { "enabled": true } }
+}
