@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Battery Monitor – ต้นแบบ BYD Seal</title>
+<style>
+:root{--bg:#070b14;--card:#0e1626;--line:#1c2b44;--tx:#e8f0ff;--mut:#7f93b5;--cy:#12d6e6;--gr:#37e08a;}
+*{box-sizing:border-box;margin:0}
+body{background:radial-gradient(1200px 600px at 50% 40%,#1a1030 0%,var(--bg) 60%);color:var(--tx);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh;padding:12px}
+:root{--or:#ffa63d;--rd:#ff5d8f}
+header{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.brand b{display:block;font-size:15px}.brand small{color:var(--mut);font-size:10px;letter-spacing:.1em}
+nav{display:flex;gap:6px;flex:1;flex-wrap:wrap}
+nav button{background:none;border:0;color:var(--mut);padding:8px 14px;border-radius:10px;font-size:14px;cursor:pointer}
+nav button.on{background:var(--cy);color:#00222a;font-weight:600}
+.badge{font-size:11px;border:1px solid var(--cy);color:var(--cy);padding:3px 9px;border-radius:99px}
+.badge.demo{border-color:var(--or);color:var(--or)}
+.grid{display:grid;grid-template-columns:1.25fr 1fr;gap:12px}
+@media(max-width:760px){.grid{grid-template-columns:1fr}}
+.card{background:linear-gradient(180deg,#0f1a2e,#0a1120);border:1px solid var(--line);border-radius:16px;padding:14px}
+.card h3{font-size:13px;color:var(--mut);font-weight:500;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+.big{font-size:52px;font-weight:300;line-height:1}
+.big small{font-size:18px;color:var(--mut)}
+.row{display:flex;justify-content:space-between;align-items:baseline;padding:7px 0;font-size:14px}
+.row span:last-child{font-variant-numeric:tabular-nums;font-weight:600}
+.bar{height:5px;background:#16233b;border-radius:9px;overflow:hidden;margin-top:3px}
+.bar i{display:block;height:100%;background:var(--cy);transition:width .8s}
+.hero{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.hero .col{min-width:110px}
+.cy{color:var(--cy)}.gr{color:var(--gr)}.or{color:var(--or)}.rd{color:var(--rd)}
+#cells{display:flex;align-items:flex-end;gap:2px;height:120px;margin-top:6px}
+#cells i{flex:1;border-radius:2px 2px 0 0;min-width:2px;transition:height .8s,background .8s}
+.temps{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}
+.temp{background:#0b1426;border:1px solid var(--line);border-radius:10px;padding:8px;text-align:center;font-size:12px;color:var(--mut)}
+.temp b{display:block;font-size:20px;color:var(--tx);margin-top:2px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:8px;margin-top:12px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px}
+.stat small{display:block;color:var(--mut);font-size:11px}.stat b{font-size:19px}
+.pill{font-size:11px;padding:2px 9px;border-radius:99px;border:1px solid var(--gr);color:var(--gr)}
+.note{margin-top:14px;color:var(--mut);font-size:12px;line-height:1.5}
+.tab{display:none}.tab.on{display:block}
+.hist{display:flex;align-items:flex-end;gap:6px;height:130px;margin-top:8px}
+.hist div{flex:1;text-align:center;font-size:10px;color:var(--mut)}
+.hist i{display:block;background:var(--cy);border-radius:4px 4px 0 0;margin-bottom:4px}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><b>Seal Battery</b><small>BYD SEAL PERFORMANCE</small></div>
+  <nav id="nav">
+    <button class="on" data-t="status">Status</button>
+    <button data-t="charging">Charging</button>
+    <button data-t="history">History</button>
+    <button data-t="health">Health</button>
+  </nav>
+  <span class="badge demo">DEMO · ข้อมูลจำลอง</span>
+  <span class="badge" id="cellcount">150/150 cells</span>
+</header>
+
+<!-- STATUS -->
+<section class="tab on" id="status">
+  <div class="grid">
+    <div class="card">
+      <h3>HV pack <span id="nomv">~520 V</span></h3>
+      <div class="hero">
+        <div class="col"><div class="big"><span id="soc">78</span><small>%</small></div><div class="cy" style="font-size:12px">SOC</div></div>
+        <div class="col"><div class="big" style="font-size:34px"><span id="soh">97.8</span><small>%</small></div><div style="font-size:12px;color:var(--mut)">SOH</div></div>
+        <div class="col" style="flex:1"><div id="pw" class="cy" style="font-size:15px">–</div></div>
+      </div>
+      <h3 style="margin-top:14px">Cell voltage (mV) <span id="cellrange"></span></h3>
+      <div id="cells"></div>
+      <div class="temps" id="temps"></div>
+    </div>
+    <div style="display:grid;gap:12px;align-content:start">
+      <div class="card">
+        <h3>Range <span id="kwh"></span></h3>
+        <div class="big"><span id="range">–</span> <small>km</small></div>
+        <div class="bar"><i id="rbar" style="width:50%"></i></div>
+      </div>
+      <div class="card">
+        <h3>Loads <span class="badge" id="inuse">–</span></h3>
+        <div class="row"><span>Motor</span><span id="l_motor">–</span></div>
+        <div class="row"><span>Cabin climate</span><span id="l_ac">–</span></div>
+        <div class="row"><span>Battery thermal</span><span id="l_bt">–</span></div>
+        <div class="row"><span>Other</span><span id="l_ot">–</span></div>
+      </div>
+      <div class="card">
+        <h3>12 V battery <span class="pill">charging</span></h3>
+        <div class="row"><span>Voltage</span><span class="gr" id="v12">–</span></div>
+        <div class="row"><span>DC-DC</span><span id="dcdc">–</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="stats" id="stats"></div>
+</section>
+
+<section class="tab" id="charging"><div class="card"><h3>Charging</h3>
+  <div class="row"><span>สถานะ</span><span>ไม่ได้เสียบชาร์จ</span></div>
+  <div class="row"><span>พลังงานที่ชาร์จครั้งล่าสุด</span><span>42.3 kWh</span></div>
+  <div class="row"><span>ค่าไฟโดยประมาณ</span><span>฿275 (6.5 ฿/kWh)</span></div>
+  <p class="note">หน้านี้เป็นตัวอย่างเลย์เอาต์ ยังไม่ผูกกับข้อมูลจริง</p></div></section>
+
+<section class="tab" id="history"><div class="card"><h3>History · SOC ต่อวัน (จำลอง)</h3>
+  <div class="hist" id="hist"></div></div></section>
+
+<section class="tab" id="health"><div class="card"><h3>Health</h3>
+  <div class="row"><span>SOH</span><span class="gr">97.8 %</span></div>
+  <div class="row"><span>ความต่างของเซลล์ (สูงสุด)</span><span id="hdiff">–</span></div>
+  <div class="row"><span>อุณหภูมิแพ็ค (ต่างกัน)</span><span id="hspread">–</span></div></div></section>
+
+<p class="note">ต้นแบบหน้าจอเท่านั้น: ตัวเลขทั้งหมดสุ่มขึ้นมาเพื่อดูหน้าตา ยังไม่ได้อ่านจากรถจริง</p>
+
+<script>
+const N=150;
+const cellsEl=document.getElementById('cells');
+for(let i=0;i<N;i++)cellsEl.appendChild(document.createElement('i'));
+const $=id=>document.getElementById(id);
+const rnd=(a,b)=>a+Math.random()*(b-a);
+let soc=78.4,used=255.2,regen=36.15;
+const fmt=(n,d=0)=>n.toFixed(d);
+function tempCls(t){return t<35?'gr':t<42?'or':'rd'}
+function tick(){
+  const motor=Math.random()<.5?0:Math.round(rnd(2000,25000));
+  const ac=Math.round(rnd(380,460));
+  const bt=Math.random()<.2?Math.round(rnd(300,900)):0;
+  const ot=Math.round(rnd(0,120));
+  const total=motor+ac+bt+ot;
+  const volts=rnd(512,528), amps=total/volts;
+  soc=Math.max(5,soc-total/1e7);
+  used+=total/3.6e6*2;
+  $('soc').textContent=fmt(soc,0);
+  $('soh').textContent='97.8';
+  $('pw').textContent=fmt(volts,1)+' V × '+fmt(amps,1)+' A = '+total+' W OUT';
+  const kwh=82.5*soc/100*0.96;
+  $('kwh').textContent='Energy left '+fmt(kwh,1)+' kWh';
+  const km=Math.round(kwh/0.155);
+  $('range').textContent=km;$('rbar').style.width=soc+'%';
+  $('inuse').textContent='In use · '+total+' W';
+  $('l_motor').textContent=motor+' W';$('l_ac').textContent=ac+' W';
+  $('l_bt').textContent=bt+' W';$('l_ot').textContent=ot+' W';
+  $('v12').textContent=fmt(rnd(13.6,13.8),1)+' V';
+  const dc=rnd(15,22);$('dcdc').textContent=fmt(dc,1)+' A · '+Math.round(dc*13.7)+' W';
+  const base=3300+soc*3.4;let mn=1e9,mx=0;
+  [...cellsEl.children].forEach(c=>{
+    const v=base+rnd(-22,22);mn=Math.min(mn,v);mx=Math.max(mx,v);
+    c.dataset.v=v;
+  });
+  [...cellsEl.children].forEach(c=>{
+    const v=+c.dataset.v;
+    c.style.height=(20+(v-mn)/(mx-mn||1)*80)+'%';
+    const d=v-mn;c.style.background=d<=2?'#37e08a':d<=8?'#ffa63d':'#ff5d8f';
+  });
+  const diff=mx-mn;
+  $('cellrange').textContent=fmt(mn)+' → '+fmt(mx)+' · diff '+fmt(diff);
+  $('hdiff').textContent=fmt(diff)+' mV';
+  const tm=[rnd(32,36),rnd(32,36),rnd(32,36),rnd(32,36)];
+  $('temps').innerHTML=tm.map((t,i)=>'<div class="temp">P'+(i+1)+'<b class="'+tempCls(t)+'">'+fmt(t,0)+'°</b></div>').join('');
+  $('hspread').textContent=fmt(Math.max(...tm)-Math.min(...tm),0)+' °C';
+  $('stats').innerHTML=[
+    ['Max',fmt(mx)+' mV'],['Min',fmt(mn)+' mV'],['Diff',fmt(diff)+' mV'],
+    ['T max',fmt(Math.max(...tm),0)+' °C'],['T min',fmt(Math.min(...tm),0)+' °C'],
+    ['Used',fmt(used,1)+' kWh'],['Regen',fmt(regen,2)+' kWh'],['Cost','฿'+fmt(used*6.5,0)]
+  ].map(s=>'<div class="stat"><small>'+s[0]+'</small><b>'+s[1]+'</b></div>').join('');
+}
+tick();setInterval(tick,2000);
+document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('#nav button').forEach(x=>x.classList.toggle('on',x===b));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.id===b.dataset.t));
+});
+$('hist').innerHTML=[82,64,71,90,55,78,69].map((v,i)=>'<div><i style="height:'+v+'%"></i>'+['จ','อ','พ','พฤ','ศ','ส','อา'][i]+'</div>').join('');
+</script>
+</body>
+</html>
