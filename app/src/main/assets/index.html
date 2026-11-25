@@ -53,9 +53,10 @@ nav button.on{background:var(--cy);color:#00222a;font-weight:600}
     <button data-t="charging">Charging</button>
     <button data-t="history">History</button>
     <button data-t="health">Health</button>
+    <button data-t="diag">Diagnostics</button>
   </nav>
-  <span class="badge demo">DEMO · ข้อมูลจำลอง</span>
-  <span class="badge" id="cellcount">150/150 cells</span>
+  <button class="badge" id="mode" style="background:none;cursor:pointer"></button>
+  <span class="badge" id="cellcount"></span>
 </header>
 
 <!-- STATUS -->
@@ -108,66 +109,100 @@ nav button.on{background:var(--cy);color:#00222a;font-weight:600}
   <div class="row"><span>SOH</span><span class="gr">97.8 %</span></div>
   <div class="row"><span>ความต่างของเซลล์ (สูงสุด)</span><span id="hdiff">–</span></div>
   <div class="row"><span>อุณหภูมิแพ็ค (ต่างกัน)</span><span id="hspread">–</span></div></div></section>
+<section class="tab" id="diag"><div class="card"><h3>Diagnostics · ค่าที่อ่านได้จากรถ
+<span><button class="badge" id="bcopy" style="background:none;cursor:pointer">Copy</button> <button class="badge" id="bsave" style="background:none;cursor:pointer">Save</button></span></h3>
+<p class="note" style="margin:0 0 8px">กด Save แล้วส่งไฟล์/ภาพหน้านี้ให้ผม จะได้ผูกค่าให้ตรงกับรถจริง</p>
+<pre id="raw" style="white-space:pre-wrap;font-size:11px;color:var(--mut);max-height:60vh;overflow:auto"></pre></div></section>
 
-<p class="note">ต้นแบบหน้าจอเท่านั้น: ตัวเลขทั้งหมดสุ่มขึ้นมาเพื่อดูหน้าตา ยังไม่ได้อ่านจากรถจริง</p>
+
+
 
 <script>
-const N=150;
-const cellsEl=document.getElementById('cells');
-for(let i=0;i<N;i++)cellsEl.appendChild(document.createElement('i'));
 const $=id=>document.getElementById(id);
+const hasCar=typeof window.Car!=='undefined';
+let mode=hasCar?'live':'demo';
+const setMode=()=>{$('mode').textContent=mode==='live'?'LIVE · รถจริง':'DEMO · ข้อมูลจำลอง';$('mode').style.color=mode==='live'?'var(--gr)':'var(--or)';$('mode').style.borderColor=mode==='live'?'var(--gr)':'var(--or)'};
+$('mode').onclick=()=>{if(hasCar){mode=mode==='live'?'demo':'live';setMode();tick()}};
+setMode();
 const rnd=(a,b)=>a+Math.random()*(b-a);
-let soc=78.4,used=255.2,regen=36.15;
-const fmt=(n,d=0)=>n.toFixed(d);
-function tempCls(t){return t<35?'gr':t<42?'or':'rd'}
+const fmt=(n,d=0)=>(n==null||isNaN(n))?'–':Number(n).toFixed(d);
+const tempCls=t=>t<35?'gr':t<42?'or':'rd';
+let used=255.2,regen=36.15,raw={};
+
+/* ---- อ่านจากรถ: ค้นหาชื่อเมธอดด้วย regex (ปรับได้หลังดูผล Diagnostics) ---- */
+function num(s){const v=parseFloat(s);return isNaN(v)||v<-9000?null:v}
+function pick(re,{min=-1e9,max=1e9}={}){
+  for(const cls in raw)for(const k in raw[cls]){
+    if(k.startsWith('_')||!re.test(k))continue;
+    const v=num(raw[cls][k]);if(v!=null&&v>=min&&v<=max)return v;}
+  return null}
+function liveData(){
+  return{
+    soc:pick(/elecpercent|batterypercent|soc|power(percent)?value/i,{min:0,max:100}),
+    soh:pick(/soh|health/i,{min:0,max:100}),
+    volts:pick(/battery.*volt|hv.*volt|pack.*volt/i,{min:50,max:900}),
+    amps:pick(/battery.*(curr|amp)|pack.*curr/i),
+    tmax:pick(/(max|high).*temp/i,{min:-40,max:120}),
+    tmin:pick(/(min|low).*temp/i,{min:-40,max:120}),
+    range:pick(/(ev|elec).*(range|endurance)|endurance/i,{min:0,max:1500}),
+    v12:pick(/(12v|lowvolt|storage).*volt/i,{min:5,max:20}),
+    speed:pick(/speed/i,{min:0,max:300}),
+    odo:pick(/totalmileage|odometer/i)
+  }}
+function demoData(){
+  const volts=rnd(512,528),motor=Math.random()<.5?0:rnd(2000,25000),ac=rnd(380,460);
+  const tot=motor+ac,t=[rnd(32,36),rnd(32,36),rnd(32,36),rnd(32,36)];
+  return{soc:78,soh:97.8,volts,amps:tot/volts,tmax:Math.max(...t),tmin:Math.min(...t),range:490,v12:13.7,motor,ac,temps:t,cells:Array.from({length:150},()=>3560+rnd(-20,20))}}
+
+const cellsEl=$('cells');
+function render(d){
+  $('soc').textContent=fmt(d.soc);$('soh').textContent=fmt(d.soh,1);
+  const p=(d.volts!=null&&d.amps!=null)?d.volts*d.amps:null;
+  $('pw').textContent=d.volts!=null?fmt(d.volts,1)+' V'+(d.amps!=null?' × '+fmt(d.amps,1)+' A = '+fmt(p)+' W':''):'–';
+  $('range').textContent=fmt(d.range);
+  $('rbar').style.width=(d.soc??0)+'%';
+  const kwh=d.soc!=null?82.5*d.soc/100*0.96:null;
+  $('kwh').textContent=kwh!=null?'Energy left ~'+fmt(kwh,1)+' kWh':'';
+  $('inuse').textContent=p!=null?'In use · '+fmt(p)+' W':'–';
+  $('l_motor').textContent=d.motor!=null?fmt(d.motor)+' W':'–';
+  $('l_ac').textContent=d.ac!=null?fmt(d.ac)+' W':'–';
+  $('l_bt').textContent='–';$('l_ot').textContent='–';
+  $('v12').textContent=d.v12!=null?fmt(d.v12,1)+' V':'–';
+  $('dcdc').textContent='–';
+  // เซลล์
+  cellsEl.innerHTML='';
+  if(d.cells){
+    d.cells.forEach(()=>cellsEl.appendChild(document.createElement('i')));
+    const mn=Math.min(...d.cells),mx=Math.max(...d.cells);
+    [...cellsEl.children].forEach((c,i)=>{const v=d.cells[i];c.style.height=(20+(v-mn)/(mx-mn||1)*80)+'%';const x=v-mn;c.style.background=x<=2?'#37e08a':x<=8?'#ffa63d':'#ff5d8f'});
+    $('cellrange').textContent=fmt(mn)+' → '+fmt(mx)+' · diff '+fmt(mx-mn);
+    $('cellcount').textContent=d.cells.length+'/'+d.cells.length+' cells';$('hdiff').textContent=fmt(mx-mn)+' mV';
+  }else{
+    cellsEl.innerHTML='<div class="note" style="margin:auto">ไม่มีข้อมูลรายเซลล์จากระบบรถ (ต้องใช้ OBD2 หรือแหล่งอื่น)</div>';
+    $('cellrange').textContent='';$('cellcount').textContent='no cell data';$('hdiff').textContent='–';
+  }
+  $('temps').innerHTML=d.temps?d.temps.map((t,i)=>'<div class="temp">P'+(i+1)+'<b class="'+tempCls(t)+'">'+fmt(t)+'°</b></div>').join('')
+    :['T max','T min'].map((l,i)=>{const t=i?d.tmin:d.tmax;return'<div class="temp">'+l+'<b class="'+(t!=null?tempCls(t):'')+'">'+(t!=null?fmt(t)+'°':'–')+'</b></div>'}).join('');
+  $('hspread').textContent=(d.tmax!=null&&d.tmin!=null)?fmt(d.tmax-d.tmin)+' °C':'–';
+  used+=(p||0)/3.6e6*2;
+  $('stats').innerHTML=[['SOC',fmt(d.soc)+' %'],['T max',d.tmax!=null?fmt(d.tmax)+' °C':'–'],['T min',d.tmin!=null?fmt(d.tmin)+' °C':'–'],
+    ['Speed',d.speed!=null?fmt(d.speed)+' km/h':'–'],['Odo',d.odo!=null?fmt(d.odo)+' km':'–'],['12 V',d.v12!=null?fmt(d.v12,1)+' V':'–']]
+    .map(s=>'<div class="stat"><small>'+s[0]+'</small><b>'+s[1]+'</b></div>').join('');
+}
 function tick(){
-  const motor=Math.random()<.5?0:Math.round(rnd(2000,25000));
-  const ac=Math.round(rnd(380,460));
-  const bt=Math.random()<.2?Math.round(rnd(300,900)):0;
-  const ot=Math.round(rnd(0,120));
-  const total=motor+ac+bt+ot;
-  const volts=rnd(512,528), amps=total/volts;
-  soc=Math.max(5,soc-total/1e7);
-  used+=total/3.6e6*2;
-  $('soc').textContent=fmt(soc,0);
-  $('soh').textContent='97.8';
-  $('pw').textContent=fmt(volts,1)+' V × '+fmt(amps,1)+' A = '+total+' W OUT';
-  const kwh=82.5*soc/100*0.96;
-  $('kwh').textContent='Energy left '+fmt(kwh,1)+' kWh';
-  const km=Math.round(kwh/0.155);
-  $('range').textContent=km;$('rbar').style.width=soc+'%';
-  $('inuse').textContent='In use · '+total+' W';
-  $('l_motor').textContent=motor+' W';$('l_ac').textContent=ac+' W';
-  $('l_bt').textContent=bt+' W';$('l_ot').textContent=ot+' W';
-  $('v12').textContent=fmt(rnd(13.6,13.8),1)+' V';
-  const dc=rnd(15,22);$('dcdc').textContent=fmt(dc,1)+' A · '+Math.round(dc*13.7)+' W';
-  const base=3300+soc*3.4;let mn=1e9,mx=0;
-  [...cellsEl.children].forEach(c=>{
-    const v=base+rnd(-22,22);mn=Math.min(mn,v);mx=Math.max(mx,v);
-    c.dataset.v=v;
-  });
-  [...cellsEl.children].forEach(c=>{
-    const v=+c.dataset.v;
-    c.style.height=(20+(v-mn)/(mx-mn||1)*80)+'%';
-    const d=v-mn;c.style.background=d<=2?'#37e08a':d<=8?'#ffa63d':'#ff5d8f';
-  });
-  const diff=mx-mn;
-  $('cellrange').textContent=fmt(mn)+' → '+fmt(mx)+' · diff '+fmt(diff);
-  $('hdiff').textContent=fmt(diff)+' mV';
-  const tm=[rnd(32,36),rnd(32,36),rnd(32,36),rnd(32,36)];
-  $('temps').innerHTML=tm.map((t,i)=>'<div class="temp">P'+(i+1)+'<b class="'+tempCls(t)+'">'+fmt(t,0)+'°</b></div>').join('');
-  $('hspread').textContent=fmt(Math.max(...tm)-Math.min(...tm),0)+' °C';
-  $('stats').innerHTML=[
-    ['Max',fmt(mx)+' mV'],['Min',fmt(mn)+' mV'],['Diff',fmt(diff)+' mV'],
-    ['T max',fmt(Math.max(...tm),0)+' °C'],['T min',fmt(Math.min(...tm),0)+' °C'],
-    ['Used',fmt(used,1)+' kWh'],['Regen',fmt(regen,2)+' kWh'],['Cost','฿'+fmt(used*6.5,0)]
-  ].map(s=>'<div class="stat"><small>'+s[0]+'</small><b>'+s[1]+'</b></div>').join('');
+  if(mode==='live'){
+    try{raw=JSON.parse(Car.read());}catch(e){raw={error:{_error:String(e)}}}
+    $('raw').textContent=JSON.stringify(raw,null,1);
+    render(liveData());
+  }else{const d=demoData();raw={demo:{note:'ข้อมูลจำลอง'}};$('raw').textContent='โหมด DEMO: ไม่มีข้อมูลจากรถ';render(d)}
 }
 tick();setInterval(tick,2000);
 document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('#nav button').forEach(x=>x.classList.toggle('on',x===b));
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.id===b.dataset.t));
 });
+$('bcopy').onclick=()=>{if(hasCar)Car.copy($('raw').textContent)};
+$('bsave').onclick=()=>{if(hasCar){$('raw').textContent='บันทึกแล้ว: '+Car.save(JSON.stringify(raw,null,1))+'\n\n'+$('raw').textContent}};
 $('hist').innerHTML=[82,64,71,90,55,78,69].map((v,i)=>'<div><i style="height:'+v+'%"></i>'+['จ','อ','พ','พฤ','ศ','ส','อา'][i]+'</div>').join('');
 </script>
 </body>
