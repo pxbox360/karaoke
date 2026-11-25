@@ -44,6 +44,9 @@ nav button.on{background:var(--cy);color:#00222a;font-weight:600}
 .hist div{flex:1;text-align:center;font-size:10px;color:var(--mut)}
 .hist i{display:block;background:var(--cy);border-radius:4px 4px 0 0;margin-bottom:4px}
 </style>
+<script>
+window.onerror=function(m,u,l,c){var d=document.createElement('div');d.style.cssText='position:fixed;left:0;right:0;bottom:0;background:#a00;color:#fff;padding:8px;font-size:13px;z-index:99';d.textContent='JS error: '+m+' (line '+l+':'+c+')';document.body.appendChild(d)};
+</script>
 </head>
 <body>
 <header>
@@ -160,7 +163,7 @@ function render(d){
   const p=(d.volts!=null&&d.amps!=null)?d.volts*d.amps:null;
   $('pw').textContent=d.volts!=null?fmt(d.volts,1)+' V'+(d.amps!=null?' × '+fmt(d.amps,1)+' A = '+fmt(p)+' W':''):'–';
   $('range').textContent=fmt(d.range);
-  $('rbar').style.width=(d.soc??0)+'%';
+  $('rbar').style.width=(d.soc!=null?d.soc:0)+'%';
   const kwh=d.soc!=null?82.5*d.soc/100*0.96:null;
   $('kwh').textContent=kwh!=null?'Energy left ~'+fmt(kwh,1)+' kWh':'';
   $('inuse').textContent=p!=null?'In use · '+fmt(p)+' W':'–';
