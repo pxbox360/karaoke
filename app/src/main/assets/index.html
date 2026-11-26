@@ -524,7 +524,46 @@
     }
   }
 
+  // ---------- OBD2 ----------
+  let obdMode = false;
+  function enterObdMode() {
+    if (obdMode) return;
+    obdMode = true;
+    // ล้างตัวเลขตัวอย่างทั้งหมด เพื่อไม่ให้เข้าใจว่าเป็นค่าจริง
+    document.querySelectorAll('.soc-big,.soh-val,.hv-header strong,.power-line,.temp-warm,.temp-cool,.temp-badge,.range-big,.energy-val,.load-val,.badge-pill,.stat-val,#odoText')
+      .forEach(e => e.innerText = '—');
+    document.querySelector('.sensor-count').innerText = 'OBD2';
+    document.querySelector('.sparkline-box').style.visibility = 'hidden';
+    document.getElementById('cellsContainer').innerText = 'ยังไม่มีข้อมูลรายเซลล์จาก OBD2';
+    document.getElementById('modeBadge').innerText = '• OBD2';
+  }
+  function obdStatus(text) {
+    enterObdMode();
+    const b = document.getElementById('daemonBadge');
+    b.innerText = text;
+    b.className = 'pill-btn pill-warn';
+  }
+  function updateObd(d) {
+    enterObdMode();
+    const set = (el, v, unit) => el.innerText = v === undefined ? '—' : v + unit;
+    const id = x => document.getElementById(x);
+    set(id('socVal'), d.soc, '%');
+    set(document.querySelector('.hv-header strong'), d.packVolt, ' V');
+    id('powerLine').innerText = d.powerW === undefined ? '—' : `${d.packVolt} V × ${d.packCurr} A = ${d.powerW} W`;
+    set(id('maxMv'), d.maxMv, ' mV');
+    set(id('minMv'), d.minMv, ' mV');
+    set(id('diffMv'), d.diffMv, ' mV');
+    set(id('tMax'), d.maxTemp, ' °C');
+    set(id('tMin'), d.minTemp, ' °C');
+    set(id('tSpread'), d.maxTemp === undefined || d.minTemp === undefined ? undefined : d.maxTemp - d.minTemp, ' °C');
+    const b = id('daemonBadge');
+    const n = Object.keys(d).length;
+    b.innerText = n ? 'OBD2: เชื่อมต่อแล้ว' : 'OBD2: รถไม่ตอบค่า';
+    b.className = n ? 'pill-btn pill-live' : 'pill-btn pill-warn';
+  }
+
   function updateDashboard(data) {
+    if (obdMode) return;
     const dBadge = document.getElementById('daemonBadge');
     if (data.daemonConnected) {
       dBadge.innerText = 'HAL Daemon: UID 2000 ON';

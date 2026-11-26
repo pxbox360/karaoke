@@ -11,8 +11,8 @@ android {
         applicationId "com.bydseal.batterypro"
         minSdk 28
         targetSdk 33
-        versionCode 4
-        versionName "4.0-AutoWake"
+        versionCode 5
+        versionName "4.1-OBD2"
     }
 
     // กุญแจเซ็นคงที่ ติดตั้งทับเวอร์ชันถัดไปได้

@@ -25,6 +25,16 @@ class MainActivity : AppCompatActivity() {
     private val handler = Handler(Looper.getMainLooper())
     private var useDemoData = false
     private var autoWakeAttempted = false
+    private var obd: com.bydseal.batterypro.obd.ObdSession? = null
+
+    private fun startObd() {
+        if (obd == null) obd = com.bydseal.batterypro.obd.ObdSession(webView).also { it.start() }
+    }
+
+    override fun onRequestPermissionsResult(code: Int, p: Array<out String>, r: IntArray) {
+        super.onRequestPermissionsResult(code, p, r)
+        if (code == 42 && r.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED) startObd()
+    }
 
     private val updateRunnable = object : Runnable {
         override fun run() {
@@ -55,6 +65,14 @@ class MainActivity : AppCompatActivity() {
         webView.settings.domStorageEnabled = true
         webView.webChromeClient = WebChromeClient()
         webView.addJavascriptInterface(AndroidBridge(), "AndroidBridge")
+        webView.webViewClient = object : android.webkit.WebViewClient() {
+            override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
+                if (android.os.Build.VERSION.SDK_INT >= 31 &&
+                    checkSelfPermission("android.permission.BLUETOOTH_CONNECT") != android.content.pm.PackageManager.PERMISSION_GRANTED)
+                    requestPermissions(arrayOf("android.permission.BLUETOOTH_CONNECT"), 42)
+                else startObd()
+            }
+        }
         webView.loadUrl("file:///android_asset/index.html")
 
         SelfAdbWaker.wakeDaemonAsync(this)
@@ -206,5 +224,6 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         handler.removeCallbacks(updateRunnable)
+        obd?.shutdown()
     }
 }
