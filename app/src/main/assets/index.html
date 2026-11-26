@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BYD Seal Battery OBD2</title>
+<style>
+  :root {
+    --bg-main: #0c1215;
+    --bg-card: #131c21;
+    --accent-teal: #1ad1b9;
+    --accent-teal-dim: rgba(26, 209, 185, 0.15);
+    --text-primary: #eef4f6;
+    --text-secondary: #7e929b;
+    --border-subtle: rgba(255, 255, 255, 0.06);
+    --temp-warm: #ff6b4a;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; user-select: none; }
+
+  body {
+    background-color: var(--bg-main);
+    color: var(--text-primary);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    padding: 14px 20px;
+    overflow: hidden;
+  }
+
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 44px;
+    margin-bottom: 12px;
+  }
+  .brand { display: flex; flex-direction: column; }
+  .brand-title { font-size: 16px; font-weight: 700; letter-spacing: 0.3px; }
+  .brand-sub { font-size: 10px; color: var(--text-secondary); letter-spacing: 1px; text-transform: uppercase; }
+
+  .nav-tabs { display: flex; gap: 8px; }
+  .nav-tab {
+    padding: 8px 28px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: 0.2s;
+  }
+  .nav-tab.active {
+    background-color: var(--accent-teal);
+    color: #06211e;
+  }
+
+  .subbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .section-label { font-size: 13px; color: var(--text-secondary); font-weight: 600; }
+  .controls-right { display: flex; align-items: center; gap: 10px; }
+
+  .pill-btn {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+    padding: 5px 12px;
+    border-radius: 16px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .pill-live {
+    color: var(--accent-teal);
+    border-color: rgba(26, 209, 185, 0.35);
+    background: var(--accent-teal-dim);
+  }
+  .pill-warn {
+    color: #feca57;
+    border-color: rgba(254, 202, 87, 0.35);
+    background: rgba(254, 202, 87, 0.12);
+  }
+  .toggle-group {
+    display: flex;
+    background: var(--bg-card);
+    border-radius: 18px;
+    padding: 2px;
+  }
+  .toggle-opt {
+    padding: 5px 14px;
+    border-radius: 16px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+  .toggle-opt.active {
+    background: var(--accent-teal);
+    color: #06211e;
+  }
+  .sensor-count { font-size: 11px; color: var(--accent-teal); text-align: right; line-height: 1.3; }
+
+  .main-grid {
+    display: grid;
+    grid-template-columns: 310px 1fr 310px;
+    gap: 14px;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    padding: 14px;
+  }
+
+  .left-col { display: flex; flex-direction: column; justify-content: space-between; }
+  .hv-header { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-secondary); margin-bottom: 4px; }
+  .soc-row { display: flex; align-items: baseline; gap: 12px; }
+  .soc-big { font-size: 40px; font-weight: 300; letter-spacing: -1px; color: #fff; }
+  .soh-box { display: flex; flex-direction: column; }
+  .soh-label { font-size: 9px; color: var(--text-secondary); }
+  .soh-val { font-size: 16px; font-weight: 700; color: var(--accent-teal); }
+  .power-line { font-size: 11px; color: var(--accent-teal); margin-top: 2px; font-weight: 600; }
+
+  .sparkline-box { margin: 8px 0; height: 34px; width: 100%; }
+
+  .sensor-list { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+  .sensor-group-title { font-size: 9px; color: var(--text-secondary); letter-spacing: 0.8px; text-transform: uppercase; margin-top: 4px; }
+  .sensor-row { display: flex; justify-content: space-between; align-items: center; font-size: 12px; padding-right: 12px; }
+  .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; }
+  .dot-warm { background: var(--temp-warm); }
+  .dot-cool { background: var(--accent-teal); }
+  .temp-warm { color: #ff9f43; font-weight: 600; }
+  .temp-cool { color: var(--accent-teal); font-weight: 600; }
+
+  .center-col {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(circle at center, #162228 0%, #0c1215 75%);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .temp-badge {
+    position: absolute;
+    background: rgba(18, 25, 30, 0.88);
+    border: 1px solid rgba(255, 107, 74, 0.5);
+    color: #ff9f43;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  }
+
+  .cells-grid {
+    display: none;
+    grid-template-columns: repeat(16, 1fr);
+    gap: 4px;
+    width: 100%;
+    height: 100%;
+    padding: 12px;
+    overflow-y: auto;
+  }
+  .cell-item {
+    background: var(--bg-card);
+    border: 1px solid rgba(26, 209, 185, 0.25);
+    border-radius: 4px;
+    padding: 4px 2px;
+    text-align: center;
+    font-size: 9px;
+  }
+  .cell-id { color: var(--text-secondary); font-size: 8px; }
+  .cell-v { color: var(--accent-teal); font-weight: 700; }
+
+  .right-col { display: flex; flex-direction: column; gap: 10px; }
+  .range-card { display: flex; justify-content: space-between; align-items: center; }
+  .range-big { font-size: 32px; font-weight: 300; }
+  .range-unit { font-size: 14px; color: var(--text-secondary); }
+  .energy-right { text-align: right; }
+  .energy-val { font-size: 15px; font-weight: 700; }
+  .energy-sub { font-size: 10px; color: var(--text-secondary); }
+
+  .loads-card { flex: 1; display: flex; flex-direction: column; justify-content: space-between; }
+  .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .card-title { font-size: 13px; font-weight: 700; }
+  .badge-pill { background: var(--accent-teal-dim); color: var(--accent-teal); font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+  .load-row { display: flex; justify-content: space-between; font-size: 12px; padding: 5px 0; border-bottom: 1px solid var(--border-subtle); }
+  .load-row:last-child { border-bottom: none; }
+  .load-name { color: var(--text-secondary); }
+  .load-val { font-weight: 700; }
+
+  .bottom-right-split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .mini-row { display: flex; justify-content: space-between; font-size: 11px; margin-top: 6px; }
+
+  .bottom-bar {
+    display: grid;
+    grid-template-columns: repeat(10, 1fr);
+    gap: 8px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    padding: 10px 16px;
+    margin-top: 12px;
+  }
+  .stat-box { display: flex; flex-direction: column; }
+  .stat-lbl { font-size: 10px; color: var(--text-secondary); margin-bottom: 2px; }
+  .stat-val { font-size: 14px; font-weight: 700; }
+  .stat-sub { font-size: 9px; color: var(--text-secondary); }
+  .val-teal { color: var(--accent-teal); }
+  .val-red { color: #ff6b6b; }
+  .val-amber { color: #feca57; }
+
+  .ble-dev-btn {
+    background: #182329;
+    border: 1px solid rgba(26, 209, 185, 0.4);
+    color: #eef4f6;
+    padding: 8px 14px;
+    border-radius: 8px;
+    margin-right: 8px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+</style>
+</head>
+<body>
+
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-title">Catfish Battery</div>
+      <div class="brand-sub">BYD SEAL PERFORMANCE • BLE OBD2 UDS</div>
+    </div>
+    <div class="nav-tabs">
+      <div class="nav-tab active" onclick="switchMainTab('status', this)">Status</div>
+      <div class="nav-tab" onclick="switchMainTab('charging', this)">Charging</div>
+      <div class="nav-tab" onclick="switchMainTab('history', this)">History</div>
+      <div class="nav-tab" onclick="switchMainTab('health', this)">Health</div>
+      <div class="nav-tab" onclick="switchMainTab('settings', this)">Settings</div>
+    </div>
+    <div style="width: 150px; text-align: right; font-size: 11px; color: var(--text-secondary);">
+      100,000 km
+    </div>
+  </div>
+
+  <div class="subbar">
+    <div class="section-label">Pack</div>
+    <div class="controls-right">
+      <button class="pill-btn pill-warn" id="obdBadge" onclick="switchMainTab('settings', document.querySelectorAll('.nav-tab')[4])">OBD2 BLE: Scanning...</button>
+      <button class="pill-btn pill-live" id="modeBadge" onclick="toggleMode()">• Live / Demo</button>
+      <div class="toggle-group">
+        <div class="toggle-opt active" id="btnSchematic" onclick="setPackView('schematic')">Schematic</div>
+        <div class="toggle-opt" id="btnCells" onclick="setPackView('cells')">Cells</div>
+      </div>
+      <div class="sensor-count">
+        176/176 cells<br>12/12 sensors
+      </div>
+    </div>
+  </div>
+
+  <div class="main-grid" id="statusView">
+    <div class="card left-col">
+      <div>
+        <div class="hv-header">
+          <span>HV pack <strong style="color:#fff;">580 V</strong></span>
+          <span>UDS <strong style="color:var(--accent-teal);">7E7 → 7EF</strong></span>
+        </div>
+        <div class="soc-row">
+          <div class="soc-big" id="socVal">86.5%</div>
+          <div class="soh-box">
+            <span class="soh-label">SOH</span>
+            <span class="soh-val" id="sohVal">93.00 %</span>
+          </div>
+        </div>
+        <div class="power-line" id="powerLine">574.2 V × 1.4 A = 804 W OUT</div>
+
+        <svg class="sparkline-box" viewBox="0 0 260 35">
+          <defs>
+            <linearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#1ad1b9" stop-opacity="0.4"/>
+              <stop offset="100%" stop-color="#1ad1b9" stop-opacity="0.0"/>
+            </linearGradient>
+          </defs>
+          <path d="M0,30 Q60,26 120,16 T260,4 L260,35 L0,35 Z" fill="url(#grad)"/>
+          <path d="M0,30 Q60,26 120,16 T260,4" fill="none" stroke="#1ad1b9" stroke-width="2"/>
+        </svg>
+      </div>
+
+      <div class="sensor-list">
+        <div class="sensor-group-title">BMS SYSTEM</div>
+        <div class="sensor-row"><span><i class="dot dot-warm"></i>board</span><span class="temp-warm" id="tBoard">35°</span></div>
+
+        <div class="sensor-group-title">HV BUS</div>
+        <div class="sensor-row"><span><i class="dot dot-warm"></i>B+</span><span class="temp-warm">35°</span></div>
+        <div class="sensor-row"><span><i class="dot dot-warm"></i>B-</span><span class="temp-warm">34°</span></div>
+
+        <div class="sensor-group-title">COOLANT</div>
+        <div class="sensor-row"><span><i class="dot dot-warm"></i>out</span><span class="temp-warm">35°</span></div>
+        <div class="sensor-row"><span><i class="dot dot-cool"></i>in</span><span class="temp-cool">33°</span></div>
+
+        <div class="sensor-group-title">DC CHARGE</div>
+        <div class="sensor-row"><span><i class="dot dot-warm"></i>DC+</span><span class="temp-warm">34°</span></div>
+        <div class="sensor-row"><span><i class="dot dot-warm"></i>DC-</span><span class="temp-warm">34°</span></div>
+      </div>
+    </div>
+
+    <div class="center-col">
+      <div id="schematicContainer" style="position:relative; width:100%; height:100%; display:flex; align-items:center; justify-content:center;">
+        <svg width="95%" height="90%" viewBox="0 0 560 320">
+          <defs>
+            <linearGradient id="packTop" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#ff6b6b"/>
+              <stop offset="50%" stop-color="#ff9f43"/>
+              <stop offset="100%" stop-color="#ee5253"/>
+            </linearGradient>
+            <linearGradient id="packSide" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#222f3e"/>
+              <stop offset="100%" stop-color="#10181d"/>
+            </linearGradient>
+          </defs>
+
+          <polygon points="80,180 280,70 490,165 290,285" fill="#172229" stroke="#2c3e50" stroke-width="2"/>
+          <polygon points="80,180 290,285 290,302 80,196" fill="url(#packSide)"/>
+          <polygon points="290,285 490,165 490,182 290,302" fill="#0d1418"/>
+
+          <polygon points="105,172 265,84 345,120 185,208" fill="url(#packTop)" opacity="0.9"/>
+          <polygon points="205,217 365,129 465,174 305,262" fill="url(#packTop)" opacity="0.85"/>
+
+          <polygon points="185,208 345,120 365,129 205,217" fill="#34495e" stroke="#1ad1b9" stroke-width="1"/>
+
+          <g stroke="#131c21" stroke-width="1.5" opacity="0.65">
+            <line x1="125" y1="161" x2="205" y2="197"/>
+            <line x1="145" y1="150" x2="225" y2="186"/>
+            <line x1="165" y1="139" x2="245" y2="175"/>
+            <line x1="185" y1="128" x2="265" y2="164"/>
+            <line x1="205" y1="117" x2="285" y2="153"/>
+            <line x1="225" y1="106" x2="305" y2="142"/>
+            <line x1="245" y1="95" x2="325" y2="131"/>
+
+            <line x1="225" y1="206" x2="325" y2="251"/>
+            <line x1="245" y1="195" x2="345" y2="240"/>
+            <line x1="265" y1="184" x2="365" y2="229"/>
+            <line x1="285" y1="173" x2="385" y2="218"/>
+            <line x1="305" y1="162" x2="405" y2="207"/>
+            <line x1="325" y1="151" x2="425" y2="196"/>
+            <line x1="345" y1="140" x2="445" y2="185"/>
+          </g>
+
+          <circle cx="115" cy="212" r="5" fill="#ff6b4a"/>
+          <circle cx="135" cy="222" r="5" fill="#38bdf8"/>
+          <polyline points="0,120 65,120 115,212" fill="none" stroke="#ff6b4a" stroke-width="1.2" opacity="0.6"/>
+          <polyline points="0,180 60,180 135,222" fill="none" stroke="#38bdf8" stroke-width="1.2" opacity="0.6"/>
+        </svg>
+
+        <div class="temp-badge" style="top: 22%; left: 42%;" id="p4Badge">P4 34°</div>
+        <div class="temp-badge" style="top: 42%; left: 26%;" id="p1Badge">P1 35°</div>
+        <div class="temp-badge" style="top: 46%; right: 24%;" id="p3Badge">P3 34°</div>
+        <div class="temp-badge" style="top: 58%; left: 45%;" id="airBadge">air 35°</div>
+        <div class="temp-badge" style="bottom: 18%; left: 36%;" id="p2Badge">P2 35°</div>
+      </div>
+
+      <div class="cells-grid" id="cellsContainer"></div>
+    </div>
+
+    <div class="right-col">
+      <div class="card range-card">
+        <div>
+          <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 2px;">Range</div>
+          <div><span class="range-big" id="rangeVal">418</span> <span class="range-unit">km</span></div>
+        </div>
+        <div class="energy-right">
+          <div style="font-size: 10px; color: var(--text-secondary);">Energy left</div>
+          <div class="energy-val" id="energyLeftVal">66.4 kWh</div>
+          <div class="energy-sub">Usable at this SOC</div>
+        </div>
+      </div>
+
+      <div class="card loads-card">
+        <div class="card-header">
+          <span class="card-title">Loads</span>
+          <span class="badge-pill" id="totalLoadBadge">In use • 804 W</span>
+        </div>
+        <div class="load-row"><span class="load-name">Motor (AWD Dual)</span><span class="load-val">0 W</span></div>
+        <div class="load-row"><span class="load-name">Cabin climate</span><span class="load-val">420 W</span></div>
+        <div class="load-row"><span class="load-name">Battery thermal</span><span class="load-val">0 W</span></div>
+        <div class="load-row"><span class="load-name">Other / Infotainment</span><span class="load-val">384 W</span></div>
+      </div>
+
+      <div class="bottom-right-split">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">DC-DC</span>
+            <span class="badge-pill">ON</span>
+          </div>
+          <div class="mini-row"><span class="load-name">HV side</span><span class="load-val">0.5 A</span></div>
+          <div class="mini-row"><span class="load-name">12 V</span><span class="load-val">19.8 A • 280 W</span></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">12 V battery</span>
+            <span class="badge-pill">charging</span>
+          </div>
+          <div class="mini-row"><span class="load-name">Voltage</span><span class="load-val" id="v12Val">13.8 V</span></div>
+          <div class="mini-row"><span class="load-name">SOC</span><span class="load-val">99.5 %</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings / BLE OBD2 Scanner & Raw UDS Logs -->
+  <div class="card" id="settingsView" style="display:none; flex:1; overflow-y:auto; font-family:monospace; font-size:12px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <strong>BYD Seal Bluetooth LE OBD2 Scanner & UDS Monitor</strong>
+      <div style="display:flex; gap:8px;">
+        <button class="pill-btn pill-live" onclick="scanObd()">Scan BLE Devices</button>
+        <button class="pill-btn pill-warn" onclick="disconnectObd()">Disconnect</button>
+        <button class="pill-btn" onclick="refreshLogs()">Refresh UDS Logs</button>
+      </div>
+    </div>
+    <div style="background:#0c1215; padding:10px; border-radius:8px; margin-bottom:10px; border:1px solid var(--border-subtle);">
+      <div style="color:#7e929b; margin-bottom:6px;">สถานะ: <span id="obdStatusDetail" style="color:#1ad1b9;">กำลังค้นหา...</span></div>
+      <div id="bleDeviceList">ยังไม่มีรายการอุปกรณ์ BLE (เสียบ OBD2 BLE ที่พอร์ตใต้คอนโซล แล้วกด Scan BLE Devices)</div>
+    </div>
+    <pre id="udsLogOutput" style="color:#1ad1b9; white-space:pre-wrap; line-height:1.4;">รอการเชื่อมต่อ OBD2 BLE เพื่อแสดงแพ็กเก็ต UDS 7E7 -> 7EF...</pre>
+  </div>
+
+  <div class="bottom-bar">
+    <div class="stat-box">
+      <span class="stat-lbl">Max</span>
+      <span class="stat-val val-teal" id="maxMv">3328 mV</span>
+    </div>
+    <div class="stat-box">
+      <span class="stat-lbl">Min</span>
+      <span class="stat-val val-teal" id="minMv">3315 mV</span>
+    </div>
+    <div class="stat-box">
+      <span class="stat-lbl">Diff</span>
+      <span class="stat-val val-red" id="diffMv">13 mV</span>
+    </div>
+    <div class="stat-box">
+      <span class="stat-lbl">T max</span>
+      <span class="stat-val val-amber" id="tMax">35 °C</span>
+    </div>
+    <div class="stat-box">
+      <span class="stat-lbl">T min</span>
+      <span class="stat-val val-teal" id="tMin">33 °C</span>
+    </div>
+    <div class="stat-box">
+      <span class="stat-lbl">Spread</span>
+      <span class="stat-val" id="tSpread">2 °C</span>
+    </div>
+    <div class="stat-box">
+      <span class="stat-lbl">Used</span>
+      <span class="stat-val">255.2 kWh</span>
+      <span class="stat-sub">trip total</span>
+    </div>
+    <div class="stat-box">
+      <span class="stat-lbl">Charged</span>
+      <span class="stat-val val-teal">249.9 kWh</span>
+      <span class="stat-sub">DC + AC</span>
+    </div>
+    <div class="stat-box">
+      <span class="stat-lbl">Regen</span>
+      <span class="stat-val val-teal">36.15 kWh</span>
+      <span class="stat-sub">braking energy</span>
+    </div>
+    <div class="stat-box">
+      <span class="stat-lbl">Cost</span>
+      <span class="stat-val">฿1,424</span>
+      <span class="stat-sub">6.50 ฿/kWh</span>
+    </div>
+  </div>
+
+<script>
+  function setPackView(view) {
+    const schem = document.getElementById('schematicContainer');
+    const cells = document.getElementById('cellsContainer');
+    const btnS = document.getElementById('btnSchematic');
+    const btnC = document.getElementById('btnCells');
+
+    if (view === 'schematic') {
+      schem.style.display = 'flex';
+      cells.style.display = 'none';
+      btnS.classList.add('active');
+      btnC.classList.remove('active');
+    } else {
+      schem.style.display = 'none';
+      cells.style.display = 'grid';
+      btnC.classList.add('active');
+      btnS.classList.remove('active');
+    }
+  }
+
+  function switchMainTab(tab, el) {
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    if (el) el.classList.add('active');
+
+    const statusView = document.getElementById('statusView');
+    const settingsView = document.getElementById('settingsView');
+    if (tab === 'settings') {
+      statusView.style.display = 'none';
+      settingsView.style.display = 'block';
+      refreshLogs();
+    } else {
+      statusView.style.display = 'grid';
+      settingsView.style.display = 'none';
+    }
+  }
+
+  function toggleMode() {
+    if (window.AndroidBridge) {
+      const isDemo = window.AndroidBridge.toggleDemoMode();
+      document.getElementById('modeBadge').innerText = isDemo ? '• Demo Mode' : '• Live Vehicle';
+    }
+  }
+
+  function scanObd() {
+    if (window.AndroidBridge) window.AndroidBridge.startBleScan();
+  }
+
+  function disconnectObd() {
+    if (window.AndroidBridge) window.AndroidBridge.disconnectBle();
+  }
+
+  function refreshLogs() {
+    if (window.AndroidBridge) {
+      document.getElementById('udsLogOutput').innerText = window.AndroidBridge.getObdLogs() || 'ยังไม่มี Log';
+    }
+  }
+
+  function updateBleDevices(devices) {
+    const box = document.getElementById('bleDeviceList');
+    if (!devices || devices.length === 0) return;
+    let html = '';
+    for (const d of devices) {
+      html += `<button class="ble-dev-btn" onclick="window.AndroidBridge.connectBle('${d.address}')">เชื่อมต่อ ${d.name} (${d.address})</button>`;
+    }
+    box.innerHTML = html;
+  }
+
+  function updateDashboard(data) {
+    const oBadge = document.getElementById('obdBadge');
+    if (data.obdConnected) {
+      oBadge.innerText = 'OBD2: ' + data.obdDevice;
+      oBadge.className = 'pill-btn pill-live';
+    } else {
+      oBadge.innerText = 'OBD2: Tap to Connect';
+      oBadge.className = 'pill-btn pill-warn';
+    }
+    if (data.obdStatus) {
+      document.getElementById('obdStatusDetail').innerText = data.obdStatus;
+    }
+
+    document.getElementById('modeBadge').innerText = data.isLive ? '• Live OBD2' : '• Demo Sim';
+    document.getElementById('socVal').innerText = data.soc + '%';
+    document.getElementById('sohVal').innerText = data.soh + ' %';
+    document.getElementById('powerLine').innerText = `${data.packVolt} V × ${data.packCurr} A = ${Math.abs(data.powerW)} W ${data.powerW >= 0 ? 'OUT' : 'IN'}`;
+    document.getElementById('rangeVal').innerText = data.rangeKm;
+    document.getElementById('energyLeftVal').innerText = data.energyLeft + ' kWh';
+    document.getElementById('totalLoadBadge').innerText = `In use • ${Math.abs(data.powerW)} W`;
+    if (data.batt12v) document.getElementById('v12Val').innerText = data.batt12v + ' V';
+
+    document.getElementById('maxMv').innerText = data.maxMv + ' mV';
+    document.getElementById('minMv').innerText = data.minMv + ' mV';
+    document.getElementById('diffMv').innerText = data.diffMv + ' mV';
+    document.getElementById('tMax').innerText = data.maxTemp + ' °C';
+    document.getElementById('tMin').innerText = data.minTemp + ' °C';
+    document.getElementById('tSpread').innerText = (data.maxTemp - data.minTemp) + ' °C';
+
+    document.getElementById('p1Badge').innerText = `P1 ${data.maxTemp}°`;
+    document.getElementById('p2Badge').innerText = `P2 ${data.maxTemp}°`;
+    document.getElementById('p3Badge').innerText = `P3 ${data.minTemp + 1}°`;
+    document.getElementById('p4Badge').innerText = `P4 ${data.minTemp}°`;
+    document.getElementById('airBadge').innerText = `air ${data.maxTemp}°`;
+
+    if (document.getElementById('cellsContainer').style.display === 'grid' && data.cells) {
+      let html = '';
+      for (let i = 0; i < data.cells.length; i++) {
+        html += `<div class="cell-item"><div class="cell-id">#${i+1}</div><div class="cell-v">${data.cells[i]}</div></div>`;
+      }
+      document.getElementById('cellsContainer').innerHTML = html;
+    }
+
+    if (document.getElementById('settingsView').style.display === 'block') {
+      refreshLogs();
+    }
+  }
+</script>
+</body>
+</html>
