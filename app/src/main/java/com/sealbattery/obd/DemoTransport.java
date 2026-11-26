@@ -8,17 +8,27 @@ public final class DemoTransport implements Transport {
     private byte[] pending;
     private final long start = System.currentTimeMillis();
 
+    private int header = Metric.BMS;
+
     @Override public void connect() {}
 
     @Override public void write(byte[] data) {
         String cmd = new String(data, StandardCharsets.US_ASCII).trim();
         String reply = "OK";
+        if (cmd.startsWith("ATSH")) header = Integer.parseInt(cmd.substring(4), 16);
         if (cmd.startsWith("22")) {
             int pid = Integer.parseInt(cmd.substring(2, 6), 16);
             double t = (System.currentTimeMillis() - start) / 1000.0;
             double amps = 45 + 70 * Math.sin(t / 4.0);
-            switch (pid) {
-                case 0x1FFC: reply = le(pid, 7640, 2); break;
+            int rise = (int) Math.min(12, t / 10);
+            if (header != Metric.BMS) {
+                if (header == 0x7E3 && pid == 0x000F) reply = le(pid, 48 + 40 + rise, 1);
+                else if (header == 0x7E2 && pid == 0xFF02) reply = le(pid, 55 + 40 + rise, 1);
+                else if (header == 0x7E0 && pid == 0xFF01) reply = le(pid, 39 + 40 + rise / 3, 1);
+                else reply = header <= 0x7E3 ? "7F2231" : "NO DATA";
+            } else switch (pid) {
+                case 0x1FFC: reply = le(pid, 7640 | (14580 << 16), 4); break;
+                case 0x1FFE: reply = le(pid, 15000 << 16, 4); break;
                 case 0x0008: reply = le(pid, (int) Math.round(566 - amps / 20), 2); break;
                 case 0x0009: reply = le(pid, (int) Math.round(amps * 10) + 5000, 2); break;
                 case 0x000B: reply = le(pid, 214, 2); break;

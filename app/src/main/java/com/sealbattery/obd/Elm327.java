@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 public final class Elm327 {
     private final Transport transport;
     private int silentCount;
+    private int header = -1;
 
     public Elm327(Transport transport) {
         this.transport = transport;
@@ -42,6 +43,20 @@ public final class Elm327 {
         return out.toString().trim();
     }
 
+    /** เลือกกล่องควบคุมที่จะคุยด้วย (คำตอบมาจากหมายเลข +8) คืน false ถ้าอะแดปเตอร์ไม่รับคำสั่ง */
+    public boolean select(int target) throws IOException {
+        if (target == header) return true;
+        header = -1;
+        boolean ok = ok(command(String.format(java.util.Locale.US, "ATSH%03X", target), 2000))
+                && ok(command(String.format(java.util.Locale.US, "ATCRA%03X", target + 8), 2000));
+        if (ok) header = target;
+        return ok;
+    }
+
+    private static boolean ok(String reply) {
+        return reply.toUpperCase(java.util.Locale.US).contains("OK");
+    }
+
     /** ตั้งค่าอะแดปเตอร์ให้คุยกับกล่อง 7E7 บน CAN 500k */
     public void initialize() throws IOException {
         command("ATZ", 4000);
@@ -52,7 +67,9 @@ public final class Elm327 {
                 throw new IOException("อุปกรณ์นี้ไม่ตอบแบบอะแดปเตอร์ OBD2");
             }
         }
-        String[] setup = {"ATL0", "ATS0", "ATH0", "ATSP6", "ATCAF1", "ATAT1", "ATST96", "ATSH7E7", "ATCRA7EF"};
+        String[] setup = {"ATL0", "ATS0", "ATH0", "ATSP6", "ATCAF1", "ATAT1", "ATST96"};
         for (String s : setup) command(s, 2000);
+        header = -1;
+        select(Metric.BMS);
     }
 }

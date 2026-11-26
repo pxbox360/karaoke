@@ -36,8 +36,12 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 @SuppressLint("MissingPermission")
@@ -97,6 +101,7 @@ public class MainActivity extends Activity implements Poller.Listener {
 
         dashboard = new DashboardView(this);
         applySettings();
+        dashboard.setSensors(savedSensors());
         arrange(getResources().getConfiguration());
         setContentView(root);
         showStatus("กดปุ่ม “เชื่อมต่อ” เพื่อเริ่ม", Poller.WORKING);
@@ -268,6 +273,8 @@ public class MainActivity extends Activity implements Poller.Listener {
         currentType = type;
         currentAddress = address;
         dashboard.clear();
+        Sensors sensors = DEMO.equals(type) ? Sensors.demo() : savedSensors();
+        dashboard.setSensors(sensors);
         Context app = getApplicationContext();
         BluetoothAdapter bt = adapter();
         Poller.Factory factory;
@@ -281,7 +288,7 @@ public class MainActivity extends Activity implements Poller.Listener {
         } else {
             factory = () -> new ClassicTransport(bt, bt.getRemoteDevice(address));
         }
-        poller = new Poller(factory, this);
+        poller = new Poller(factory, sensors, this);
         connectButton.setText("หยุด");
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         poller.start();
@@ -314,6 +321,117 @@ public class MainActivity extends Activity implements Poller.Listener {
         });
     }
 
+    @Override
+    public void onScanDone(Poller source, List<Scanner.Hit> hits) {
+        ui.post(() -> {
+            if (source != poller) return;
+            if (DEMO.equals(currentType)) {
+                toast("โหมดทดลองไม่บันทึกผลค้นหา");
+                return;
+            }
+            if (hits.isEmpty()) {
+                toast("ไม่พบค่าใด ๆ ตรวจว่าเปิดระบบรถแล้ว และดูปุ่มบันทึก");
+                return;
+            }
+            // เก็บผลรอบก่อนไว้เปรียบเทียบ
+            prefs.edit()
+                    .putString("scan_old", prefs.getString("scan_new", ""))
+                    .putString("scan_new", Scanner.save(hits))
+                    .apply();
+            if (!isFinishing()) showScanResults();
+        });
+    }
+
+    // ---------- เซนเซอร์น้ำหล่อเย็นและมอเตอร์ ----------
+
+    private Sensors savedSensors() {
+        Sensors s = new Sensors();
+        for (Metric m : Metric.values()) {
+            if (m.configurable()) s.decode(m, prefs.getString("sensor_" + m.name(), ""));
+        }
+        return s;
+    }
+
+    private void useSensors() {
+        if (DEMO.equals(currentType) && poller != null) return;
+        Sensors s = savedSensors();
+        dashboard.setSensors(s);
+        if (poller != null) poller.setSensors(s);
+    }
+
+    private void showSensorMenu() {
+        String[] items = {"เริ่มค้นหาเซนเซอร์ (จอดรถก่อน)", "ดูผลค้นหาล่าสุด", "คืนรหัสเซนเซอร์เป็นค่าเริ่มต้น"};
+        new AlertDialog.Builder(this)
+                .setTitle("เซนเซอร์น้ำหล่อเย็น / มอเตอร์ / SOH")
+                .setItems(items, (d, which) -> {
+                    if (which == 0) {
+                        if (poller == null || DEMO.equals(currentType)) {
+                            toast("เชื่อมต่อกับรถจริงก่อน แล้วจึงค้นหา");
+                        } else {
+                            poller.requestScan();
+                            toast("เริ่มค้นหา อาจใช้เวลาหลายนาที อย่าออกจากหน้าแอพ");
+                        }
+                    } else if (which == 1) {
+                        showScanResults();
+                    } else {
+                        SharedPreferences.Editor edit = prefs.edit();
+                        for (Metric m : Metric.values()) {
+                            if (m.configurable()) edit.remove("sensor_" + m.name());
+                        }
+                        edit.apply();
+                        useSensors();
+                        toast("คืนค่าเริ่มต้นแล้ว");
+                    }
+                })
+                .setNegativeButton("ปิด", null)
+                .show();
+    }
+
+    /** แสดงผลค้นหา ค่าที่เปลี่ยนจากรอบก่อนอยู่บนสุด */
+    private void showScanResults() {
+        final List<Scanner.Hit> hits = Scanner.load(prefs.getString("scan_new", ""));
+        if (hits.isEmpty()) {
+            toast("ยังไม่มีผลค้นหา");
+            return;
+        }
+        final Map<String, Integer> old = new HashMap<>();
+        for (Scanner.Hit h : Scanner.load(prefs.getString("scan_old", ""))) old.put(h.key(), h.celsius());
+        Collections.sort(hits, (a, b) -> change(b, old) - change(a, old));
+
+        ArrayAdapter<String> list = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1);
+        for (Scanner.Hit h : hits) {
+            Integer before = old.get(h.key());
+            String line = h.celsius() + "°C";
+            if (before != null && before != h.celsius()) line = before + "° → " + line + "  (เปลี่ยน)";
+            line += "  [ค่าดิบ " + h.raw + "]";
+            list.add(line + "\nกล่อง " + String.format(Locale.US, "%03X  รหัส %04X", h.header, h.did));
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("แตะเพื่อเลือกใช้ (" + hits.size() + " ค่า)")
+                .setAdapter(list, (d, which) -> assign(hits.get(which)))
+                .setNegativeButton("ปิด", null)
+                .show();
+    }
+
+    private static int change(Scanner.Hit h, Map<String, Integer> old) {
+        Integer before = old.get(h.key());
+        return before == null ? 0 : Math.abs(h.celsius() - before);
+    }
+
+    private void assign(Scanner.Hit hit) {
+        Metric[] targets = {Metric.COOLANT, Metric.MOTOR_FRONT, Metric.MOTOR_REAR, Metric.SOH_DIRECT};
+        String[] names = {"น้ำหล่อเย็น", "มอเตอร์หน้า", "มอเตอร์หลัง", "SOH (ค่าดิบ = %)"};
+        new AlertDialog.Builder(this)
+                .setTitle("ใช้ " + hit.key() + " (" + hit.celsius() + "°C / ดิบ " + hit.raw + ") เป็น")
+                .setItems(names, (d, which) -> {
+                    prefs.edit().putString("sensor_" + targets[which].name(), hit.key()).apply();
+                    useSensors();
+                    toast("บันทึกเป็น" + names[which] + "แล้ว");
+                })
+                .setNegativeButton("ยกเลิก", null)
+                .show();
+    }
+
     private void showStatus(String text, int level) {
         status.setText("● " + text);
         status.setTextColor(level == Poller.OK ? 0xFF34D399 : level >= Poller.ERROR ? 0xFFF87171 : 0xFFFBBF24);
@@ -323,7 +441,7 @@ public class MainActivity extends Activity implements Poller.Listener {
 
     private void applySettings() {
         dashboard.setSettings(prefs.getFloat("capacity", 82.5f), prefs.getFloat("consumption", 18f),
-                prefs.getBoolean("invert", false));
+                prefs.getBoolean("invert", false), prefs.getFloat("reference_ah", 0f));
     }
 
     private void showSettings() {
@@ -332,12 +450,14 @@ public class MainActivity extends Activity implements Poller.Listener {
         box.setPadding(dp(24), dp(8), dp(24), 0);
         EditText capacity = numberField(box, "ความจุแบตเตอรี่ (kWh)", prefs.getFloat("capacity", 82.5f));
         EditText consumption = numberField(box, "อัตราสิ้นเปลืองเฉลี่ย (kWh/100 กม.)", prefs.getFloat("consumption", 18f));
+        EditText reference = numberField(box, "ความจุอ้างอิงสำหรับ SOH (Ah) ใส่ 0 = อัตโนมัติ",
+                prefs.getFloat("reference_ah", 0f));
         CheckBox invert = new CheckBox(this);
         invert.setText("กลับเครื่องหมายกระแส (ถ้าตอนชาร์จขึ้นว่าจ่ายไฟออก)");
         invert.setChecked(prefs.getBoolean("invert", false));
         box.addView(invert);
         TextView note = new TextView(this);
-        note.setText("* พลังงานคงเหลือและระยะทางเป็นค่าคำนวณจากสองช่องด้านบน ไม่ได้อ่านจากรถ");
+        note.setText("* พลังงานคงเหลือและระยะทางคำนวณจากสองช่องแรก ส่วน SOH โดยประมาณคำนวณจากความจุที่รถรายงาน");
         note.setTextSize(12);
         box.addView(note);
         ScrollView scroll = new ScrollView(this);
@@ -351,10 +471,12 @@ public class MainActivity extends Activity implements Poller.Listener {
                             .putFloat("capacity", parse(capacity, 82.5f, 20, 150))
                             .putFloat("consumption", parse(consumption, 18f, 5, 60))
                             .putBoolean("invert", invert.isChecked())
+                            .putFloat("reference_ah", parse(reference, 0f, 50, 220))
                             .apply();
                     applySettings();
                 })
                 .setNegativeButton("ยกเลิก", null)
+                .setNeutralButton("เซนเซอร์", (d, w) -> showSensorMenu())
                 .show();
     }
 

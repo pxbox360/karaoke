@@ -8,8 +8,8 @@ android {
         applicationId 'com.sealbattery.obd'
         minSdk 24
         targetSdk 34
-        versionCode 1
-        versionName '1.0'
+        versionCode 3
+        versionName '1.2'
     }
     // คีย์สำหรับเซ็นแอพใช้เอง ทำให้ติดตั้งเวอร์ชันใหม่ทับของเดิมได้
     signingConfigs {

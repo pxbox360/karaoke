@@ -9,6 +9,7 @@ public final class Poller extends Thread {
     public interface Listener {
         void onStatus(Poller source, String text, int level);
         void onData(Poller source, BatteryData data);
+        void onScanDone(Poller source, java.util.List<Scanner.Hit> hits);
     }
 
     public static final int WORKING = 0, OK = 1, ERROR = 2, FAILED = 3;
@@ -19,9 +20,20 @@ public final class Poller extends Thread {
     private final BatteryData data = new BatteryData();
     private volatile boolean running = true;
     private volatile Transport transport;
+    private volatile Sensors sensors;
+    private volatile boolean scanRequested;
 
-    public Poller(Factory factory, Listener listener) {
+    public void setSensors(Sensors s) {
+        sensors = s;
+    }
+
+    public void requestScan() {
+        scanRequested = true;
+    }
+
+    public Poller(Factory factory, Sensors sensors, Listener listener) {
         this.factory = factory;
+        this.sensors = sensors;
         this.listener = listener;
     }
 
@@ -62,6 +74,18 @@ public final class Poller extends Thread {
         }
     }
 
+    private Sensors applied;
+
+    private void forgetChangedSensors() {
+        Sensors now = sensors;
+        if (applied != null && applied != now) {
+            for (Metric m : Metric.values()) {
+                if (!applied.encode(m).equals(now.encode(m))) data.unset(m);
+            }
+        }
+        applied = now;
+    }
+
     private void poll(Elm327 elm) throws IOException {
         Metric[] all = Metric.values();
         int slowCount = 0;
@@ -77,6 +101,14 @@ public final class Poller extends Thread {
             read(elm, m);
         }
         while (running) {
+            if (scanRequested) {
+                scanRequested = false;
+                java.util.List<Scanner.Hit> hits = Scanner.scan(elm, percent -> {
+                    if (running) listener.onStatus(this, "กำลังค้นหาเซนเซอร์ " + percent + "%", WORKING);
+                    return running;
+                });
+                if (running) listener.onScanDone(this, hits);
+            }
             boolean any = false;
             for (Metric m : all) {
                 if (m.fast && running) any |= read(elm, m);
@@ -96,7 +128,11 @@ public final class Poller extends Thread {
     }
 
     private boolean read(Elm327 elm, Metric m) throws IOException {
-        Double v = m.decode(elm.command(m.command(), 1500));
+        forgetChangedSensors();
+        Sensors s = applied;
+        if (!s.has(m) || !elm.select(s.header(m))) return false;
+        int did = s.did(m);
+        Double v = m.decode(elm.command(Metric.command(did), 1500), did);
         if (v != null) {
             data.set(m, v, System.currentTimeMillis());
             if (running) listener.onStatus(this, "เชื่อมต่อแล้ว กำลังอ่านค่า", OK);

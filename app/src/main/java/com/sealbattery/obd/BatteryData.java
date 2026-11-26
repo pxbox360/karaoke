@@ -10,6 +10,11 @@ public final class BatteryData {
         times[m.ordinal()] = now;
     }
 
+    /** ลบค่าเดิม (ใช้ตอนเปลี่ยนรหัสของเซนเซอร์) */
+    public void unset(Metric m) {
+        times[m.ordinal()] = 0;
+    }
+
     /** คืน null ถ้ายังไม่เคยอ่านได้ */
     public Double get(Metric m) {
         return times[m.ordinal()] == 0 ? null : values[m.ordinal()];
@@ -25,6 +30,22 @@ public final class BatteryData {
         Double v = get(Metric.VOLTAGE), a = get(Metric.CURRENT);
         if (v == null || a == null) return null;
         return v * a / 1000.0 * (invert ? -1 : 1);
+    }
+
+    /** ความจุของแบตตอนใหม่โดยประมาณของ Seal Performance: 82.56 kWh / (172 เซลล์ x 3.2 V) */
+    public static final double NOMINAL_AH = 150;
+
+    /** ความจุอ้างอิง: ค่าที่ผู้ใช้ตั้ง (ถ้ามากกว่า 0) ไม่งั้นใช้ค่าจากรถ ไม่งั้นใช้ 150 Ah */
+    public double referenceAh(double manual) {
+        if (manual > 0) return manual;
+        Double car = get(Metric.CAPACITY_REF);
+        return car != null ? car : NOMINAL_AH;
+    }
+
+    /** SOH โดยประมาณ (%) จากความจุปัจจุบันเทียบความจุอ้างอิง */
+    public Double estimatedSoh(double manual) {
+        Double now = get(Metric.CAPACITY_NOW);
+        return now == null ? null : now / referenceAh(manual) * 100;
     }
 
     public BatteryData copy() {

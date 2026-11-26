@@ -15,8 +15,8 @@ public final class DashboardView extends View {
     private static final int BG = 0xFF0B1020, CARD = 0xFF151D31, TRACK = 0xFF26314B;
     private static final int TEXT = 0xFFF1F5F9, MUTED = 0xFF8E9AB3;
     private static final int CYAN = 0xFF22D3EE, GREEN = 0xFF34D399, AMBER = 0xFFFBBF24, RED = 0xFFF87171;
-    private static final long STALE_MS = 15000;
-    private static final float PORTRAIT_W = 400, PORTRAIT_H = 1082;
+    private static final long STALE_MS = 25000;
+    private static final float PORTRAIT_W = 400, PORTRAIT_H = 1276;
 
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF r = new RectF();
@@ -30,12 +30,23 @@ public final class DashboardView extends View {
     private long lastHistory;
     private float capacityKwh = 82.5f, consumption = 18f;
     private boolean invertCurrent;
+    private float referenceAh;
+    private Sensors sensors = new Sensors();
+
+    public void setSensors(Sensors s) {
+        for (Metric m : Metric.values()) {
+            if (!sensors.encode(m).equals(s.encode(m))) data.unset(m);
+        }
+        sensors = s;
+        invalidate();
+    }
 
     public DashboardView(Context context) {
         super(context);
     }
 
-    public void setSettings(float capacityKwh, float consumption, boolean invertCurrent) {
+    public void setSettings(float capacityKwh, float consumption, boolean invertCurrent, float referenceAh) {
+        this.referenceAh = referenceAh;
         if (invertCurrent != this.invertCurrent) historyCount = 0;
         this.capacityKwh = capacityKwh;
         this.consumption = consumption;
@@ -89,20 +100,21 @@ public final class DashboardView extends View {
             float x1 = g, x2 = x1 + colW + g, x3 = x2 + colW + g;
             float top = g, bottom = vh - g, inner = bottom - top - g;
             socCard(c, x1, top, colW, bottom - top);
-            float powerH = inner * 0.56f;
+            float powerH = inner * 0.47f, driveH = inner * 0.27f;
             powerCard(c, x2, top, colW, powerH);
-            lifeCard(c, x2, top + powerH + g, colW, inner - powerH);
-            float cellH = inner * 0.56f;
-            cellCard(c, x3, top, colW, cellH);
-            tempCard(c, x3, top + cellH + g, colW, inner - cellH);
+            driveCard(c, x2, top + powerH + g, colW, driveH);
+            lifeCard(c, x2, top + powerH + driveH + g * 2, colW, inner - powerH - driveH - g);
+            cellCard(c, x3, top, colW, powerH);
+            tempCard(c, x3, top + powerH + g, colW, inner - powerH);
         } else {
             float s = w / PORTRAIT_W;
             c.scale(s, s);
             float x = 12, cw = PORTRAIT_W - 24, y = 12;
-            socCard(c, x, y, cw, 372);          y += 384;
+            socCard(c, x, y, cw, 436);          y += 448;
             powerCard(c, x, y, cw, 236);        y += 248;
             cellCard(c, x, y, cw, 188);         y += 200;
             tempCard(c, x, y, cw, 118);         y += 130;
+            driveCard(c, x, y, cw, 118);        y += 130;
             lifeCard(c, x, y, cw, 96);
         }
         c.restore();
@@ -113,8 +125,8 @@ public final class DashboardView extends View {
     private void socCard(Canvas c, float x, float y, float w, float h) {
         card(c, x, y, w, h, "ระดับแบตเตอรี่ (SOC)");
         Double soc = data.get(Metric.SOC);
-        float chipH = 62;
-        float areaTop = y + 40, areaBottom = y + h - chipH - 22;
+        float chipH = 62, sohH = 54;
+        float areaTop = y + 40, areaBottom = y + h - chipH - sohH - 30;
         float radius = Math.min((w - 56) / 2f, (areaBottom - areaTop) / 1.76f);
         float cx = x + w / 2f;
         float cy = areaTop + radius + Math.max(4, (areaBottom - areaTop - radius * 1.76f) / 2f);
@@ -131,13 +143,38 @@ public final class DashboardView extends View {
         text(c, big, cx, cy + radius * 0.14f, radius * 0.52f, dim(TEXT, Metric.SOC), bold, Paint.Align.CENTER);
         text(c, "%", cx, cy + radius * 0.46f, radius * 0.2f, MUTED, regular, Paint.Align.CENTER);
 
-        float cw = (w - 36) / 2f, cyTop = y + h - chipH - 12;
+        float cw = (w - 36) / 2f, cyTop = y + h - chipH - sohH - 20;
+        sohStrip(c, x + 12, y + h - sohH - 12, w - 24, sohH);
         Double energy = soc == null ? null : capacityKwh * soc / 100.0;
         Double range = energy == null || consumption <= 0 ? null : energy / consumption * 100.0;
         chip(c, x + 12, cyTop, cw, chipH, "พลังงานคงเหลือ*",
                 energy == null ? "--" : fmt("%.1f", energy), "kWh");
         chip(c, x + 24 + cw, cyTop, cw, chipH, "ระยะทางคาดการณ์*",
                 range == null ? "--" : fmt("%.0f", range), "กม.");
+    }
+
+    private void sohStrip(Canvas c, float x, float y, float w, float h) {
+        r.set(x, y, x + w, y + h);
+        fill(c, r, 12, TRACK);
+        Double value;
+        String source;
+        Metric basis;
+        if (sensors.has(Metric.SOH_DIRECT)) {
+            basis = Metric.SOH_DIRECT;
+            value = data.get(basis);
+            source = "อ่านจากรหัส " + sensors.encode(basis);
+        } else {
+            basis = Metric.CAPACITY_NOW;
+            value = data.estimatedSoh(referenceAh);
+            Double now = data.get(basis);
+            source = now == null ? "รอค่าความจุจากรถ"
+                    : fmt("%.1f", now) + " / " + fmt("%.1f Ah", data.referenceAh(referenceAh));
+        }
+        String title = sensors.has(Metric.SOH_DIRECT) ? "สุขภาพแบต (SOH)" : "SOH โดยประมาณ*";
+        text(c, title, x + 12, y + 22, 13, TEXT, bold, Paint.Align.LEFT);
+        text(c, source, x + 12, y + 41, 11, MUTED, regular, Paint.Align.LEFT);
+        text(c, value == null ? "--" : fmt("%.1f%%", value), x + w - 12, y + 36, 26,
+                dim(value == null ? MUTED : GREEN, basis), bold, Paint.Align.RIGHT);
     }
 
     private void powerCard(Canvas c, float x, float y, float w, float h) {
@@ -239,6 +276,25 @@ public final class DashboardView extends View {
         int color = t == null ? MUTED : t >= 50 ? RED : t >= 42 ? AMBER : t < 10 ? CYAN : GREEN;
         text(c, t == null ? "--" : fmt("%.0f°", t), cx, cy + 6, 32, dim(color, m), bold, Paint.Align.CENTER);
         text(c, label, cx, cy + 28, 12, MUTED, regular, Paint.Align.CENTER);
+    }
+
+    private void driveCard(Canvas c, float x, float y, float w, float h) {
+        card(c, x, y, w, h, "น้ำหล่อเย็น / มอเตอร์");
+        float colW = (w - 24) / 3f;
+        float cy = y + 36 + (h - 36) / 2f;
+        driveColumn(c, x + 12 + colW * 0.5f, cy, "น้ำหล่อเย็น", Metric.COOLANT);
+        driveColumn(c, x + 12 + colW * 1.5f, cy, "มอเตอร์หน้า", Metric.MOTOR_FRONT);
+        driveColumn(c, x + 12 + colW * 2.5f, cy, "มอเตอร์หลัง", Metric.MOTOR_REAR);
+    }
+
+    private void driveColumn(Canvas c, float cx, float cy, String label, Metric m) {
+        Double t = data.get(m);
+        text(c, t == null ? "--" : fmt("%.0f°", t), cx, cy + 4, 30, dim(t == null ? MUTED : TEXT, m), bold,
+                Paint.Align.CENTER);
+        text(c, label, cx, cy + 23, 12, MUTED, regular, Paint.Align.CENTER);
+        if (!sensors.has(m)) {
+            text(c, "ยังไม่ตั้งรหัส", cx, cy + 37, 10, AMBER, regular, Paint.Align.CENTER);
+        }
     }
 
     private void lifeCard(Canvas c, float x, float y, float w, float h) {
